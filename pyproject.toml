@@ -1,0 +1,12 @@
+[project]
+name = "gpt-register-multithread"
+version = "0.1.0"
+description = "OpenAI 自动注册工具，多代理轮换与多线程并发。"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "curl-cffi>=0.7.4",
+]
+
+[tool.uv]
+package = false

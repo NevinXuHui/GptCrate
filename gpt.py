@@ -54,7 +54,7 @@ _load_dotenv()
 MAIL_DOMAIN =os.getenv("MAIL_DOMAIN", "")
 MAIL_WORKER_BASE = os.getenv("MAIL_WORKER_BASE", "").rstrip("/")
 MAIL_ADMIN_PASSWORD = os.getenv("MAIL_ADMIN_PASSWORD", "")
-TOKEN_OUTPUT_DIR = os.getenv("TOKEN_OUTPUT_DIR", "tokens").strip()
+TOKEN_OUTPUT_DIR = (os.getenv("TOKEN_OUTPUT_DIR") or "./tokens").strip()
 CLI_PROXY_AUTHS_DIR = os.getenv("CLI_PROXY_AUTHS_DIR", "").strip()
 
 PROXY_FILE = os.getenv("PROXY_FILE", "").strip()
@@ -1797,8 +1797,9 @@ def _save_result(token_json: str, password: str, proxy_str: Optional[str]) -> No
             print(f"[*] 本地 token 文件已删除: {file_name}")
 
     if account_email and password:
-        accounts_file = os.path.join(TOKEN_OUTPUT_DIR, "accounts.txt") if TOKEN_OUTPUT_DIR else "accounts.txt"
+        accounts_file = os.path.join(TOKEN_OUTPUT_DIR, "accounts.txt") if TOKEN_OUTPUT_DIR else "./tokens/accounts.txt"
         with _file_write_lock:
+            os.makedirs(os.path.dirname(accounts_file), exist_ok=True)
             with open(accounts_file, "a", encoding="utf-8") as af:
                 af.write(f"{account_email}----{password}\n")
         print(f"[*] 账号密码已追加至: {accounts_file}")

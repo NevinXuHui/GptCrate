@@ -17,28 +17,49 @@
 ## 快速开始
 
 ```bash
-# 1. 复制配置模板
+# 1. 安装 uv
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows PowerShell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# 2. 创建虚拟环境并安装依赖
+uv sync
+
+# 3. 复制配置模板
 cp .env.example .env
 
-# 2. 编辑 .env，填写 LuckMail API Key
+# 4. 编辑 .env，填写 LuckMail API Key
 # LUCKMAIL_API_KEY=你的API密钥
 
-# 3. 运行
-python gpt.py --once
+# 5. 运行
+uv run python gpt.py --once
 ```
 
 或使用一键启动器（推荐）：
 
 ```bash
-python start.py
+uv run python start.py
 ```
 
 ---
 
 ## 环境要求
 
-- Python 3.8+
-- 依赖安装：
+- 推荐使用 `uv` 自动管理 Python 版本和虚拟环境
+- 项目内置 `.python-version`，默认使用 Python 3.11
+- 若不用 `uv`，也可以手动准备 Python 3.10+
+
+### 使用 uv
+
+```bash
+uv sync
+```
+
+首次执行会自动创建 `.venv/` 并安装依赖。
+
+### 手动安装依赖
 
 ```bash
 pip install curl_cffi
@@ -126,6 +147,7 @@ CLI_PROXY_AUTHS_DIR=/path/to/auths
 ```
 
 - `TOKEN_OUTPUT_DIR` -- Token JSON 文件保存目录
+- 默认值为 `./tokens`，目录不存在时会自动创建
 - `CLI_PROXY_AUTHS_DIR` -- 若配置，注册成功后自动拷贝 token 到该目录并删除本地副本
 
 ---
@@ -150,9 +172,7 @@ socks5://user:pass@proxy2.com:1080
 
 ## 命令行参数
 
-```
-python gpt.py [参数]
-```
+`uv run python gpt.py [参数]`
 
 | 参数                     | 默认值               | 说明                                        |
 | ------------------------ | -------------------- | ------------------------------------------- |
@@ -177,31 +197,31 @@ python gpt.py [参数]
 ### 1. 单次注册 (直连)
 
 ```bash
-python gpt.py --once
+uv run python gpt.py --once
 ```
 
 ### 2. 单代理注册一个
 
 ```bash
-python gpt.py --proxy http://127.0.0.1:7890 --once
+uv run python gpt.py --proxy http://127.0.0.1:7890 --once
 ```
 
 ### 3. 单代理批量注册 10 个
 
 ```bash
-python gpt.py --proxy http://127.0.0.1:7890 --count 10
+uv run python gpt.py --proxy http://127.0.0.1:7890 --count 10
 ```
 
 ### 4. 多代理轮换 + 批量注册
 
 ```bash
-python gpt.py --proxy-file proxies.txt --count 20
+uv run python gpt.py --proxy-file proxies.txt --count 20
 ```
 
 ### 5. 多代理 + 3 线程并发批量注册
 
 ```bash
-python gpt.py --proxy-file proxies.txt --count 20 --threads 3
+uv run python gpt.py --proxy-file proxies.txt --count 20 --threads 3
 ```
 
 ### 6. 全部配置写在 .env，直接运行
@@ -213,13 +233,13 @@ BATCH_THREADS=2
 ```
 
 ```bash
-python gpt.py
+uv run python gpt.py
 ```
 
 ### 7. 检测已有 token + 自动补注册
 
 ```bash
-python gpt.py --check --proxy-file proxies.txt
+uv run python gpt.py --check --proxy-file proxies.txt
 ```
 
 先扫描 `CLI_PROXY_AUTHS_DIR` 下的 token 文件，刷新过期的、删除无效的，可用数低于阈值 (默认 10) 时自动补注册。
@@ -227,7 +247,7 @@ python gpt.py --check --proxy-file proxies.txt
 ### 8. 无限循环模式 (持续注册)
 
 ```bash
-python gpt.py --proxy-file proxies.txt --threads 2
+uv run python gpt.py --proxy-file proxies.txt --threads 2
 ```
 
 不指定 `--count` 时为无限循环模式，按 `Ctrl+C` 停止。

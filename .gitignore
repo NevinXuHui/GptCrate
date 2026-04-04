@@ -5,6 +5,7 @@ __pycache__/
 *.so
 .Python
 venv/
+.venv/
 env/
 *.egg-info/
 
@@ -18,10 +19,13 @@ env/
 .env
 
 # Tokens (敏感数据)
-tokens/
+token_*.json
+tokens/*
+!tokens/.gitkeep
 auths/
 
 # Accounts
+account.txt
 accounts.txt
 
 # OS

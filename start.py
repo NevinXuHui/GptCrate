@@ -95,7 +95,7 @@ def generate_env(platform, api_key, count, threads):
     env_content = f"""MAIL_DOMAIN=
 MAIL_WORKER_BASE=
 MAIL_ADMIN_PASSWORD=
-TOKEN_OUTPUT_DIR=
+TOKEN_OUTPUT_DIR=./tokens
 CLI_PROXY_AUTHS_DIR=
 
 PROXY_FILE=proxies.txt
