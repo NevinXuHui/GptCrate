@@ -4,13 +4,25 @@
 
 ---
 
-## 推荐：使用 LuckMail 接码平台
+> 默认推荐方案：`LuckMail`
+>
+> 这套 README 的快速开始、默认示例和一键启动器都优先按 `LuckMail` 配置。
+
+## 首页推荐：使用 LuckMail 接码平台
 
 **强烈推荐使用 [LuckMail](https://mails.luckyous.com/EC36F88F) 接码平台！**
 
 - 注册地址：https://mails.luckyous.com/EC36F88F
 - 只需填写 API Key，其他配置代码已帮你搞定！
 - 自动获取邮箱、自动接收验证码、全自动注册
+
+最小配置：
+
+```env
+EMAIL_MODE=luckmail
+LUCKMAIL_API_KEY=你的API密钥
+TOKEN_OUTPUT_DIR=./tokens
+```
 
 ---
 
