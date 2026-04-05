@@ -72,6 +72,7 @@ HOTMAIL007_MAIL_MODE = os.getenv("HOTMAIL007_MAIL_MODE", "graph").strip().lower(
 LUCKMAIL_API_KEY = os.getenv("LUCKMAIL_API_KEY", "").strip()
 LUCKMAIL_API_URL = os.getenv("LUCKMAIL_API_URL", "https://mails.luckyous.com/api/v1/openapi").rstrip("/")
 LUCKMAIL_AUTO_BUY = os.getenv("LUCKMAIL_AUTO_BUY", "true").strip().lower() == "true"
+LUCKMAIL_PURCHASED_ONLY = os.getenv("LUCKMAIL_PURCHASED_ONLY", "false").strip().lower() == "true"
 LUCKMAIL_EMAIL_TYPE = os.getenv("LUCKMAIL_EMAIL_TYPE", "ms_imap").strip().lower()
 try:
     LUCKMAIL_MAX_RETRY = int(os.getenv("LUCKMAIL_MAX_RETRY", "3").strip())
@@ -166,6 +167,9 @@ _email_queue: Optional[EmailQueue] = None
 _prefetch_no_stock = False  # 是否无库存
 _prefetch_lock = threading.Lock()
 
+# 已购邮箱模式标志（只使用已购邮箱，不购买新邮箱）
+_luckmail_purchased_only = False
+
 
 class ActiveEmailQueue:
     """线程安全的活跃邮箱队列，存储预检测的活跃邮箱"""
@@ -209,8 +213,9 @@ def _skip_net_check() -> bool:
 def _prefetch_active_emails(rotator: ProxyRotator, min_pool_size: int = 10, batch_size: int = 20):
     """后台线程：预检测邮箱池补充
     当活跃邮箱数量低于 min_pool_size 时，优先检查已购邮箱，不足时批量购买
+    如果 _luckmail_purchased_only=True，则只使用已购邮箱，不购买新邮箱
     """
-    global _active_email_queue, _prefetch_no_stock
+    global _active_email_queue, _prefetch_no_stock, _luckmail_purchased_only
     if _active_email_queue is None:
         _active_email_queue = ActiveEmailQueue()
 
@@ -222,6 +227,12 @@ def _prefetch_active_emails(rotator: ProxyRotator, min_pool_size: int = 10, batc
     if purchased_active:
         _active_email_queue.add_batch(purchased_active)
         print(f"[*] [预检测] ✓ 已从已购邮箱中添加 {len(purchased_active)} 个活跃邮箱 | 队列: {len(_active_email_queue)} 个")
+
+    # 如果只使用已购邮箱模式，检测完成后退出
+    if _luckmail_purchased_only:
+        print(f"[*] [预检测] 已购邮箱模式：只使用已购邮箱，不购买新邮箱")
+        print(f"[*] [预检测] 预检测线程退出")
+        return
 
     while True:
         try:
@@ -325,7 +336,7 @@ def get_email_and_token(proxies: Any = None) -> tuple:
             return email, email
 
         # 检查是否有预检测的活跃邮箱队列
-        global _active_email_queue
+        global _active_email_queue, _luckmail_purchased_only
         if _active_email_queue is not None and not _active_email_queue.is_empty():
             email_data = _active_email_queue.pop()
             if email_data:
@@ -341,6 +352,11 @@ def get_email_and_token(proxies: Any = None) -> tuple:
                     "email_data": email_data,
                 }
                 return email, email
+
+        # 如果只使用已购邮箱模式，且队列已空，直接返回失败
+        if _luckmail_purchased_only:
+            print(f"[*] 已购邮箱已用完，停止注册")
+            return "", ""
 
         # 自动购买模式：购买 -> 检测活跃度 -> 使用
         max_retries = LUCKMAIL_MAX_RETRY
@@ -1572,6 +1588,9 @@ def _generate_password(length: int = 16) -> str:
 
 
 def run(proxy: Optional[str]) -> tuple:
+    """运行注册流程，返回 (token_json, password, email)
+    失败时返回 (None/特殊标记, None, email)
+    """
     proxies: Any = None
     if proxy:
         proxies = {"http": proxy, "https": proxy}
@@ -1594,11 +1613,11 @@ def run(proxy: Optional[str]) -> tuple:
                 raise RuntimeError("检查代理哦w - 所在地不支持")
         except Exception as e:
             print(f"[Error] 网络连接检查失败: {e}")
-            return None, None
+            return None, None, None
 
     email, dev_token = get_email_and_token(proxies)
     if not email or not dev_token:
-        return None, None
+        return None, None, email
     print(f"[*] 成功获取临时邮箱与授权: {email}")
     masked = dev_token[:8] + "..." if dev_token else ""
     print(f"[*] 临时邮箱 JWT: {masked}")
@@ -1652,11 +1671,11 @@ def run(proxy: Optional[str]) -> tuple:
 
         if signup_status == 403:
             print("[Error] 提交注册表单返回 403，中断本次运行，将在10秒后重试...")
-            return "retry_403", None
+            return "retry_403", None, email
         if signup_status != 200:
             print("[Error] 提交注册表单失败，跳过本次流程")
             print(signup_resp.text)
-            return None, None
+            return None, None, email
 
         password = _generate_password()
         register_body = json.dumps({"password": password, "username": email})
@@ -1677,7 +1696,7 @@ def run(proxy: Optional[str]) -> tuple:
         print(f"[*] 提交注册(密码)状态: {pwd_resp.status_code}")
         if pwd_resp.status_code != 200:
             print(pwd_resp.text)
-            return None, None
+            return None, None, email
 
         try:
             register_json = pwd_resp.json()
@@ -1746,7 +1765,7 @@ def run(proxy: Optional[str]) -> tuple:
                     break
             if not code:
                 print("[Error] 多次重试后仍未收到验证码，跳过")
-                return None, None
+                return None, None, email
 
             print("[*] 开始校验验证码...")
             code_resp = _post_with_retry(
@@ -1789,7 +1808,7 @@ def run(proxy: Optional[str]) -> tuple:
 
         if create_account_status != 200:
             print(create_account_resp.text)
-            return None, None
+            return None, None, email
 
         print("[*] 账户创建完毕，执行静默重登录...")
         s.cookies.clear()
@@ -1869,7 +1888,7 @@ def run(proxy: Optional[str]) -> tuple:
                             break
                     if not code2:
                         print("[Error] 二次验证码获取失败")
-                        return None, None
+                        return None, None, email
                     code2_resp = _post_with_retry(
                         s,
                         "https://auth.openai.com/api/accounts/email-otp/validate",
@@ -1883,14 +1902,14 @@ def run(proxy: Optional[str]) -> tuple:
                     print(f"[*] 二次验证码校验状态: {code2_resp.status_code}")
                     if code2_resp.status_code != 200:
                         print(code2_resp.text)
-                        return None, None
+                        return None, None, email
             except Exception:
                 pass
 
         auth_cookie = s.cookies.get("oai-client-auth-session")
         if not auth_cookie:
             print("[Error] 重登录后未能获取授权 Cookie")
-            return None, None
+            return None, None, email
 
         auth_json = {}
         raw_val = auth_cookie.strip()
@@ -1909,11 +1928,11 @@ def run(proxy: Optional[str]) -> tuple:
         workspaces = auth_json.get("workspaces") or []
         if not workspaces:
             print("[Error] 重登录后 Cookie 里仍没有 workspace 信息")
-            return None, None
+            return None, None, email
         workspace_id = str((workspaces[0] or {}).get("id") or "").strip()
         if not workspace_id:
             print("[Error] 无法解析 workspace_id")
-            return None, None
+            return None, None, email
 
         select_body = f'{{"workspace_id":"{workspace_id}"}}'
         print("[*] 开始选择 workspace...")
@@ -1933,12 +1952,12 @@ def run(proxy: Optional[str]) -> tuple:
         if select_resp.status_code != 200:
             print(f"[Error] 选择 workspace 失败，状态码: {select_resp.status_code}")
             print(select_resp.text)
-            return None, None
+            return None, None, email
 
         continue_url = str((select_resp.json() or {}).get("continue_url") or "").strip()
         if not continue_url:
             print("[Error] workspace/select 响应里缺少 continue_url")
-            return None, None
+            return None, None, email
 
         try:
             select_data = select_resp.json()
@@ -2025,16 +2044,16 @@ def run(proxy: Optional[str]) -> tuple:
                     redirect_uri=oauth.redirect_uri,
                     expected_state=oauth.state,
                 )
-                return token_json, password
+                return token_json, password, email
             current_url = next_url
             time.sleep(0.5)
 
         print("[Error] 未能在重定向链中捕获到最终 Callback URL")
-        return None, None
+        return None, None, email
 
     except Exception as e:
         print(f"[Error] 运行时发生错误: {e}")
-        return None, None
+        return None, None, email
 
 
 # ==========================================
@@ -2233,6 +2252,37 @@ _success_counter_lock = threading.Lock()
 _success_counter = 0
 
 
+def _disable_email_on_failure(email: str, tag: str = "") -> None:
+    """注册失败时禁用邮箱"""
+    global _luckmail_credentials
+    creds = _luckmail_credentials.get(email)
+    if creds and "purchase_id" in creds:
+        purchase_id = creds["purchase_id"]
+        try:
+            if luckmail_disable_email(purchase_id, disabled=True):
+                print(f"{tag} [*] 注册失败，已禁用邮箱: {email}")
+            else:
+                print(f"{tag} [Warning] 禁用邮箱失败: {email}")
+        except Exception as e:
+            print(f"{tag} [Warning] 禁用邮箱时出错: {email}, {e}")
+    else:
+        # 如果本地没有凭据，尝试从已购邮箱列表中查找
+        try:
+            mails, err = luckmail_get_purchased_emails(user_disabled=0)
+            if not err and mails:
+                for mail in mails:
+                    if mail.get("email_address") == email:
+                        purchase_id = mail.get("id")
+                        if purchase_id:
+                            if luckmail_disable_email(purchase_id, disabled=True):
+                                print(f"{tag} [*] 注册失败，已禁用邮箱: {email}")
+                            else:
+                                print(f"{tag} [Warning] 禁用邮箱失败: {email}")
+                        break
+        except Exception as e:
+            print(f"{tag} [Warning] 查找并禁用邮箱时出错: {email}, {e}")
+
+
 def _save_result(token_json: str, password: str, proxy_str: Optional[str]) -> None:
     """线程安全地保存注册结果"""
     try:
@@ -2309,8 +2359,9 @@ def _worker(
 
         print(f"\n{tag} [{datetime.now().strftime('%H:%M:%S')}] 开始注册 (代理: {proxy_str or '直连'})")
 
+        email_used = None
         try:
-            token_json, password = run(proxy_str)
+            token_json, password, email_used = run(proxy_str)
 
             if token_json == "retry_403":
                 print(f"{tag} 检测到 403，等待10秒后重试...")
@@ -2328,12 +2379,18 @@ def _worker(
                 print(f"{tag} 注册成功! (本线程累计: {local_success})")
             else:
                 print(f"{tag} 本次注册失败")
+                # 注册失败时禁用邮箱
+                if EMAIL_MODE == "luckmail" and email_used:
+                    _disable_email_on_failure(email_used, tag)
                 if EMAIL_MODE == "file" and _email_queue is not None and len(_email_queue) == 0:
                     print(f"{tag} 邮箱队列已用完，停止线程")
                     break
 
         except Exception as e:
             print(f"{tag} [Error] 未捕获异常: {e}")
+            # 异常时也尝试禁用邮箱
+            if EMAIL_MODE == "luckmail" and email_used:
+                _disable_email_on_failure(email_used, tag)
 
         if count_target == 1 and remaining is None:
             break
@@ -2355,7 +2412,7 @@ def _worker(
 
 
 def main() -> None:
-    global EMAIL_MODE, HOTMAIL007_API_KEY, HOTMAIL007_MAIL_TYPE, HOTMAIL007_MAIL_MODE, _email_queue, LUCKMAIL_API_KEY, LUCKMAIL_AUTO_BUY
+    global EMAIL_MODE, HOTMAIL007_API_KEY, HOTMAIL007_MAIL_TYPE, HOTMAIL007_MAIL_MODE, _email_queue, LUCKMAIL_API_KEY, LUCKMAIL_AUTO_BUY, LUCKMAIL_PURCHASED_ONLY
 
     parser = argparse.ArgumentParser(description="OpenAI 自动注册脚本")
     parser.add_argument(
@@ -2510,6 +2567,12 @@ def main() -> None:
     # 如果是 LuckMail 模式且启用了自动购买，启动预检测后台线程
     prefetch_thread = None
     if EMAIL_MODE == "luckmail" and LUCKMAIL_AUTO_BUY:
+        # 设置只使用已购邮箱模式标志
+        global _luckmail_purchased_only
+        _luckmail_purchased_only = LUCKMAIL_PURCHASED_ONLY
+
+        if _luckmail_purchased_only:
+            print("[*] 已购邮箱模式：只使用已购邮箱，不购买新邮箱")
         print("[*] 启动预检测后台线程，维护活跃邮箱池...")
         global _active_email_queue
         if _active_email_queue is None:
@@ -2523,7 +2586,8 @@ def main() -> None:
         # 等待预检测线程准备第一批邮箱
         print("[*] 等待预检测线程准备活跃邮箱...")
         wait_count = 0
-        while len(_active_email_queue) < 3 and wait_count < 30:  # 最多等30秒
+        max_wait = 30 if not _luckmail_purchased_only else 60  # 已购邮箱模式等待更久
+        while len(_active_email_queue) < 3 and wait_count < max_wait:
             time.sleep(1)
             wait_count += 1
         print(f"[*] 当前活跃邮箱池: {len(_active_email_queue)} 个")
