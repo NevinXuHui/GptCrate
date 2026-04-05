@@ -18,16 +18,19 @@ def select_platform() -> str:
     print("请选择邮箱平台:")
     print("  1. LuckMail (推荐 - 自动接码，省心省力)")
     print("  2. Hotmail007 (需要已有微软邮箱)")
+    print("  3. SkyMail (自建邮箱系统)")
     print()
 
     while True:
-        choice = input("请输入选项 (1/2): ").strip()
+        choice = input("请输入选项 (1/2/3): ").strip()
         if choice == "1":
             return "luckmail"
         elif choice == "2":
             return "hotmail007"
+        elif choice == "3":
+            return "skymail"
         else:
-            print("无效选项，请输入 1 或 2")
+            print("无效选项，请输入 1、2 或 3")
 
 def select_luckmail_mode() -> str:
     print("\n请选择 LuckMail 工作模式:")
@@ -70,9 +73,11 @@ def get_api_key(platform):
     env_key = None
     if platform == "luckmail":
         env_key = "LUCKMAIL_API_KEY"
+    elif platform == "skymail":
+        env_key = "SKYMAIL_ADMIN_EMAIL"
     else:
         env_key = "HOTMAIL007_API_KEY"
-    
+
     if os.path.exists(".env"):
         with open(".env", "r", encoding="utf-8") as f:
             for line in f:
@@ -81,16 +86,19 @@ def get_api_key(platform):
                     if existing_key and not existing_key.startswith("你的"):
                         print(f"\n✅ 检测到已配置的 {platform} API Key，跳过输入")
                         return existing_key
-    
+
     # 如果没有配置，让用户输入
     if platform == "luckmail":
         print("\n请输入 LuckMail API Key:")
         print("(在你的 LuckMail 账户 -> API 中获取)")
+    elif platform == "skymail":
+        print("\n请输入 SkyMail 管理员邮箱:")
+        print("(用于生成 API Token)")
     else:
         print("\n请输入 Hotmail007 API Key:")
         print("(在你的 Hotmail007 账户 -> API 中获取)")
-    
-    api_key = input("请输入 API Key: ").strip()
+
+    api_key = input("请输入: ").strip()
     return api_key
 
 def get_count():
@@ -167,6 +175,15 @@ LUCKMAIL_AUTO_BUY={auto_buy}
 # 邮箱不活跃时的最大重试次数
 LUCKMAIL_MAX_RETRY=3
 """
+    elif platform == "skymail":
+        # SkyMail 需要额外获取密码
+        password = input("\n请输入 SkyMail 管理员密码: ").strip()
+        env_content += f"""
+# SkyMail 模式配置
+SKYMAIL_API_URL=http://your-domain.com/api/public
+SKYMAIL_ADMIN_EMAIL={api_key}
+SKYMAIL_ADMIN_PASSWORD={password}
+"""
     else:
         env_content += f"""
 # Hotmail007 模式配置
@@ -208,6 +225,18 @@ def main() -> None:
     if not os.path.exists("gpt.py"):
         print("错误: 未找到 gpt.py 文件")
         sys.exit(1)
+
+    # 检查是否已有 .env 配置
+    if os.path.exists(".env"):
+        print("\n⚠️  检测到已存在 .env 配置文件")
+        choice = input("是否覆盖现有配置？(y/N): ").strip().lower()
+        if choice not in ['y', 'yes']:
+            print("\n✅ 保留现有配置，直接运行...")
+            # 读取现有配置获取参数
+            count = None
+            threads = 1
+            run_gpt(count, threads)
+            return
 
     # 选择平台
     platform = select_platform()

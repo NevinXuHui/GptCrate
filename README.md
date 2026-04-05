@@ -99,13 +99,14 @@ pip install curl_cffi
 
 ### 邮箱模式
 
-支持三种邮箱来源，通过 `EMAIL_MODE` 切换：
+支持四种邮箱来源，通过 `EMAIL_MODE` 切换：
 
 | 模式              | 值           | 说明                                                                                        |
 | ----------------- | ------------ | ------------------------------------------------------------------------------------------- |
 | Cloudflare Worker | `cf`         | 使用自有域名随机生成邮箱，需配置 `MAIL_DOMAIN` / `MAIL_WORKER_BASE` / `MAIL_ADMIN_PASSWORD` |
 | Hotmail007 API    | `hotmail007` | 通过 API 拉取微软邮箱，需配置 `HOTMAIL007_API_KEY`                                          |
 | **LuckMail API**  | `luckmail`   | **推荐** 智能购买+预检测活跃邮箱，需配置 `LUCKMAIL_API_KEY`                                 |
+| SkyMail API       | `skymail`    | 自建邮箱系统，需配置 `SKYMAIL_ADMIN_EMAIL` / `SKYMAIL_ADMIN_PASSWORD`                       |
 
 **Cloudflare 模式配置：**
 
@@ -170,6 +171,24 @@ LUCKMAIL_MAX_RETRY=3
    - 启动时批量检测已购邮箱活跃度
    - 活跃的加入号池，不活跃的自动禁用
    - 号池不足时可选择是否购买新邮箱
+
+**SkyMail 模式配置：**
+
+```env
+EMAIL_MODE=skymail
+SKYMAIL_API_URL=http://your-domain.com/api/public
+SKYMAIL_ADMIN_EMAIL=你的管理员邮箱
+SKYMAIL_ADMIN_PASSWORD=你的管理员密码
+# 邮箱域名（可选，不填则自动从管理员邮箱提取）
+SKYMAIL_EMAIL_DOMAIN=your-domain.com
+```
+
+**SkyMail 工作模式说明：**
+
+- 使用管理员账号生成 API Token
+- 自动创建随机邮箱用户（域名自动从管理员邮箱提取）
+- 通过 API 查询邮件列表获取验证码
+- 注册成功后清理本地凭据
 
 ### 代理配置
 
